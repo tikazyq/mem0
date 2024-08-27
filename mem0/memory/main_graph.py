@@ -132,13 +132,13 @@ class MemoryGraph:
 
 
     def _search(self, query):
-        search_results = client.chat.completions.create(
+        search_results = client.beta.chat.completions.parse(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": f"You are a smart assistant who understands the entities, their types, and relations in a given text. If user message contains self reference such as 'I', 'me', 'my' etc. then use {self.user_id} as the source node. Extract the entities."},
                 {"role": "user", "content": query},
             ],
-            response_format=SEARCHQuery.model_json_schema(),
+            response_format=SEARCHQuery,
         ).choices[0].message
 
         node_list = search_results.parsed.nodes
