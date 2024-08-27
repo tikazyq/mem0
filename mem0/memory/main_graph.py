@@ -37,12 +37,13 @@ def get_embedding(text):
     return response.data[0].embedding
 
 class MemoryGraph:
-    def __init__(self, config):
+    def __init__(self, config, mem=None):
+        self.mem = mem
         self.config = config
         self.graph = Neo4jGraph(self.config.graph_store.config.url, self.config.graph_store.config.username, self.config.graph_store.config.password)
 
-        self.llm = OpenAILLM()
-        self.embedding_model = OpenAIEmbedding()
+        self.llm = self.mem.llm if self.mem else OpenAILLM()
+        self.embedding_model = self.mem.embedding_model if self.mem else OpenAIEmbedding()
         self.user_id = None
         self.threshold = 0.7
         self.model_name = self.config.llm.config.get('model') or "gpt-4o-2024-08-06"
@@ -62,7 +63,7 @@ class MemoryGraph:
         # retrieve the search results
         search_output = self._search(data)
         
-        extracted_entities = client.beta.chat.completions.parse(
+        extracted_entities = self.llm.client.beta.chat.completions.parse(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": EXTRACT_ENTITIES_PROMPT.replace("USER_ID", self.user_id)},
@@ -75,7 +76,7 @@ class MemoryGraph:
         update_memory_prompt = get_update_memory_messages(search_output, extracted_entities)
         tools = [UPDATE_MEMORY_TOOL_GRAPH, ADD_MEMORY_TOOL_GRAPH, NOOP_TOOL]
 
-        memory_updates = client.beta.chat.completions.parse(
+        memory_updates = self.llm.client.beta.chat.completions.parse(
             model=self.model_name,
             messages=update_memory_prompt,
             tools=tools,
@@ -132,7 +133,7 @@ class MemoryGraph:
 
 
     def _search(self, query):
-        search_results = client.beta.chat.completions.parse(
+        search_results = self.llm.client.beta.chat.completions.parse(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": f"You are a smart assistant who understands the entities, their types, and relations in a given text. If user message contains self reference such as 'I', 'me', 'my' etc. then use {self.user_id} as the source node. Extract the entities."},
