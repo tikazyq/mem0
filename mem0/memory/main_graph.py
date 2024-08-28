@@ -29,13 +29,6 @@ class SEARCHQuery(BaseModel):
     nodes: list[str]
     relations: list[str]
 
-def get_embedding(text):
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=text
-    )
-    return response.data[0].embedding
-
 class MemoryGraph:
     def __init__(self, config, mem=None):
         self.mem = mem
@@ -62,21 +55,29 @@ class MemoryGraph:
         
         # retrieve the search results
         search_output = self._search(data)
+
+        # extract entities from the user input
+        prompt = f"""User Query: {data}
         
-        extracted_entities = self.llm.client.beta.chat.completions.parse(
+Respond in JSON format with the following schema:
+{ADDQuery.model_json_schema()}
+"""
+        response_content = self.llm.client.chat.completions.create(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": EXTRACT_ENTITIES_PROMPT.replace("USER_ID", self.user_id)},
-                {"role": "user", "content": data},
+                {"role": "user", "content": prompt},
             ],
-            response_format=ADDQuery,
+            response_format={"type": "json_object"},
             temperature=0,
-        ).choices[0].message.parsed.entities
+        ).choices[0].message.content
+        ado_query = ADDQuery.model_validate_json(response_content)
+        extracted_entities = ado_query.entities
 
         update_memory_prompt = get_update_memory_messages(search_output, extracted_entities)
         tools = [UPDATE_MEMORY_TOOL_GRAPH, ADD_MEMORY_TOOL_GRAPH, NOOP_TOOL]
 
-        memory_updates = self.llm.client.beta.chat.completions.parse(
+        memory_updates = self.llm.client.chat.completions.create(
             model=self.model_name,
             messages=update_memory_prompt,
             tools=tools,
@@ -105,8 +106,8 @@ class MemoryGraph:
             destination_type = item['destination_type'].lower().replace(" ", "_")
 
             # Create embeddings
-            source_embedding = get_embedding(source)
-            dest_embedding = get_embedding(destination)
+            source_embedding = self.get_embedding(source)
+            dest_embedding = self.get_embedding(destination)
 
             # Updated Cypher query to include node types and embeddings
             cypher = f"""
@@ -130,20 +131,24 @@ class MemoryGraph:
 
             result = self.graph.query(cypher, params=params)
 
-
-
     def _search(self, query):
-        search_results = self.llm.client.beta.chat.completions.parse(
+        prompt = f"""User Query: {query}
+
+Respond in JSON format with the following schema:
+{SEARCHQuery.model_json_schema()}
+"""
+        search_results_content = self.llm.client.chat.completions.create(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": f"You are a smart assistant who understands the entities, their types, and relations in a given text. If user message contains self reference such as 'I', 'me', 'my' etc. then use {self.user_id} as the source node. Extract the entities."},
-                {"role": "user", "content": query},
+                {"role": "user", "content": prompt},
             ],
-            response_format=SEARCHQuery,
-        ).choices[0].message
+            response_format={"type": "json_object"},
+        ).choices[0].message.content
+        search_results = SEARCHQuery.model_validate_json(search_results_content)
 
-        node_list = search_results.parsed.nodes
-        relation_list = search_results.parsed.relations
+        node_list = search_results.nodes
+        relation_list = search_results.relations
 
         node_list = [node.lower().replace(" ", "_") for node in node_list]
         relation_list = [relation.lower().replace(" ", "_") for relation in relation_list]
@@ -151,7 +156,7 @@ class MemoryGraph:
         result_relations = []
 
         for node in node_list:
-            n_embedding = get_embedding(node)
+            n_embedding = self.get_embedding(node)
 
             cypher_query = """
             MATCH (n)
@@ -180,7 +185,6 @@ class MemoryGraph:
             result_relations.extend(ans)
 
         return result_relations
-    
 
     def search(self, query):
         """
@@ -206,7 +210,6 @@ class MemoryGraph:
 
         return search_results
 
-
     def delete_all(self):
         cypher = """
         MATCH (n)
@@ -214,7 +217,6 @@ class MemoryGraph:
         """
         self.graph.query(cypher)
     
-
     def get_all(self):
         """
         Retrieves all nodes and relationships from the graph database based on optional filtering criteria.
@@ -243,7 +245,6 @@ class MemoryGraph:
             })
 
         return final_results
-    
     
     def _update_relationship(self, source, target, relationship):
         """
@@ -283,3 +284,6 @@ class MemoryGraph:
 
         if not result:
             raise Exception(f"Failed to update or create relationship between {source} and {target}")
+
+    def get_embedding(self, text):
+        return self.embedding_model.embed(text)
