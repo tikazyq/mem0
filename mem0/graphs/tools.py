@@ -4,7 +4,6 @@ UPDATE_MEMORY_TOOL_GRAPH = {
     "function": {
         "name": "update_graph_memory",
         "description": "Update the relationship key of an existing graph memory based on new information. This function should be called when there's a need to modify an existing relationship in the knowledge graph. The update should only be performed if the new information is more recent, more accurate, or provides additional context compared to the existing information. The source and destination nodes of the relationship must remain the same as in the existing graph memory; only the relationship itself can be updated.",
-        "strict": True,
         "parameters": {
             "type": "object",
             "properties": {
@@ -32,7 +31,6 @@ ADD_MEMORY_TOOL_GRAPH = {
     "function": {
         "name": "add_graph_memory",
         "description": "Add a new graph memory to the knowledge graph. This function creates a new relationship between two nodes, potentially creating new nodes if they don't exist.",
-        "strict": True,
         "parameters": {
             "type": "object",
             "properties": {
@@ -69,7 +67,6 @@ NOOP_TOOL = {
     "function": {
         "name": "noop",
         "description": "No operation should be performed to the graph entities. This function is called when the system determines that no changes or additions are necessary based on the current input or context. It serves as a placeholder action when no other actions are required, ensuring that the system can explicitly acknowledge situations where no modifications to the graph are needed.",
-        "strict": True,
         "parameters": {
             "type": "object",
             "properties": {},
